@@ -1,0 +1,561 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, maximum-scale=1, user-scalable=no">
+<title>VOID</title>
+<style>
+  :root { --fg: #e8e4ff; --dim: #8a83b8; --accent: #b79cff; }
+  html, body { margin: 0; height: 100%; background: #000; overflow: hidden; touch-action: none; }
+  body { font-family: ui-monospace, Menlo, Consolas, monospace; color: var(--fg); user-select: none; -webkit-user-select: none; }
+  canvas { display: block; width: 100vw; height: 100vh; }
+  #hud { position: fixed; top: 14px; left: 16px; right: 16px; display: flex; justify-content: space-between; pointer-events: none; font-size: 14px; letter-spacing: 0.08em; }
+  #hud .bar { width: min(220px, 40vw); height: 6px; background: #1a1630; border-radius: 3px; overflow: hidden; margin-top: 6px; }
+  #hud .fill { height: 100%; width: 100%; background: linear-gradient(90deg, #6b4dff, #f2e9ff); transition: width .1s linear; }
+  #overlay { position: fixed; inset: 0; display: flex; align-items: center; justify-content: center; text-align: center; padding: 16px; pointer-events: none; }
+  #overlay .panel { max-width: 460px; }
+  #overlay h1 { font-size: clamp(48px, 14vw, 96px); letter-spacing: 0.4em; margin: 0 0 8px 0.4em; font-weight: 300; text-shadow: 0 0 24px var(--accent); }
+  #overlay p { color: var(--dim); line-height: 1.6; margin: 6px 0; font-size: 14px; }
+  #overlay .big { color: var(--fg); font-size: 18px; }
+  #overlay .blink { animation: blink 1.4s ease-in-out infinite; color: var(--fg); margin-top: 22px; }
+  @keyframes blink { 50% { opacity: 0.25; } }
+  .hidden { display: none !important; }
+</style>
+</head>
+<body>
+<canvas id="c"></canvas>
+
+<div id="hud" class="hidden">
+  <div>
+    <div>LIGHT</div>
+    <div class="bar"><div class="fill" id="lightFill"></div></div>
+  </div>
+  <div style="text-align:right">
+    <div id="score">0</div>
+    <div id="combo" style="color:var(--dim)"></div>
+  </div>
+</div>
+
+<div id="overlay">
+  <div class="panel" id="menu">
+    <h1>VOID</h1>
+    <p class="big">You are the last light in the dark.</p>
+    <p>Your light fades every second. Gather <b style="color:#fff3c4">motes</b> to keep burning.<br>
+       Things live in the void. They are drawn to you.</p>
+    <p><b>Move</b> — WASD / arrows / mouse / touch-drag<br>
+       <b>Pulse</b> — Space / click / double-tap (costs light, banishes nearby shades)<br>
+       <b>Mute</b> — M &nbsp; · &nbsp; <b>Pause</b> — P</p>
+    <p class="blink">press space or tap to begin</p>
+    <p id="best"></p>
+  </div>
+  <div class="panel hidden" id="over">
+    <h1 style="font-size:clamp(32px,9vw,56px)">FADED</h1>
+    <p class="big" id="finalScore"></p>
+    <p id="finalStats"></p>
+    <p class="blink">press space or tap to try again</p>
+  </div>
+  <div class="panel hidden" id="paused"><h1 style="font-size:40px">PAUSED</h1></div>
+</div>
+
+<script>
+(() => {
+  const canvas = document.getElementById('c');
+  const ctx = canvas.getContext('2d');
+  const $ = id => document.getElementById(id);
+  let W = 0, H = 0, DPR = 1;
+
+  function resize() {
+    DPR = Math.min(window.devicePixelRatio || 1, 2);
+    W = window.innerWidth; H = window.innerHeight;
+    canvas.width = W * DPR; canvas.height = H * DPR;
+    ctx.setTransform(DPR, 0, 0, DPR, 0, 0);
+  }
+  window.addEventListener('resize', resize);
+  resize();
+
+  // ---------- storage ----------
+  const store = {
+    get(k) { try { return localStorage.getItem(k); } catch (e) { return null; } },
+    set(k, v) { try { localStorage.setItem(k, v); } catch (e) {} }
+  };
+  let best = parseInt(store.get('void.best') || '0', 10) || 0;
+
+  // ---------- audio ----------
+  let audio = null, muted = store.get('void.muted') === '1';
+  function ensureAudio() {
+    if (!audio) { try { audio = new (window.AudioContext || window.webkitAudioContext)(); } catch (e) {} }
+    if (audio && audio.state === 'suspended') audio.resume();
+  }
+  function tone(freq, dur, type = 'sine', vol = 0.08, slide = 0) {
+    if (!audio || muted) return;
+    const t = audio.currentTime;
+    const o = audio.createOscillator(), g = audio.createGain();
+    o.type = type;
+    o.frequency.setValueAtTime(freq, t);
+    if (slide) o.frequency.exponentialRampToValueAtTime(Math.max(20, freq + slide), t + dur);
+    g.gain.setValueAtTime(vol, t);
+    g.gain.exponentialRampToValueAtTime(0.0001, t + dur);
+    o.connect(g).connect(audio.destination);
+    o.start(t); o.stop(t + dur);
+  }
+  const PENTA = [0, 2, 4, 7, 9, 12, 14, 16, 19, 21];
+  const sfx = {
+    mote(n) { tone(440 * Math.pow(2, PENTA[Math.min(n, PENTA.length - 1)] / 12), 0.25, 'sine', 0.07); },
+    hit() { tone(110, 0.4, 'sawtooth', 0.09, -60); },
+    pulse() { tone(220, 0.5, 'triangle', 0.1, 440); },
+    kill() { tone(660, 0.15, 'square', 0.03, -300); },
+    over() { tone(220, 1.2, 'sine', 0.1, -180); },
+    lantern() { tone(523, 0.6, 'triangle', 0.08, 523); }
+  };
+
+  // ---------- input ----------
+  const keys = new Set();
+  const pointer = { active: false, x: 0, y: 0 };
+  window.addEventListener('keydown', e => {
+    const k = e.key.toLowerCase();
+    if ([' ', 'arrowup', 'arrowdown', 'arrowleft', 'arrowright'].includes(k)) e.preventDefault();
+    ensureAudio();
+    if (k === 'm') { muted = !muted; store.set('void.muted', muted ? '1' : '0'); return; }
+    if (k === 'p' && state === 'play') { setPaused(!paused); return; }
+    if (k === ' ') {
+      if (state !== 'play') { if (performance.now() > acceptStartAt) start(); }
+      else pulse();
+      return;
+    }
+    keys.add(k);
+  });
+  window.addEventListener('keyup', e => keys.delete(e.key.toLowerCase()));
+  window.addEventListener('blur', () => { keys.clear(); if (state === 'play') setPaused(true); });
+
+  let lastTap = 0;
+  canvas.addEventListener('pointerdown', e => {
+    ensureAudio();
+    if (state !== 'play') { if (performance.now() > acceptStartAt) start(); return; }
+    if (paused) { setPaused(false); return; }
+    if (e.pointerType === 'mouse') { pulse(); return; }
+    const now = performance.now();
+    pointer.active = true; pointer.x = e.clientX; pointer.y = e.clientY;
+    if (now - lastTap < 280) pulse(); // double-tap pulses too
+    lastTap = now;
+  });
+  canvas.addEventListener('pointermove', e => {
+    if (e.pointerType === 'mouse' || pointer.active) { pointer.active = true; pointer.x = e.clientX; pointer.y = e.clientY; }
+  });
+  canvas.addEventListener('pointerup', e => { if (e.pointerType !== 'mouse') pointer.active = false; });
+  canvas.addEventListener('pointercancel', () => { pointer.active = false; });
+  canvas.addEventListener('touchstart', e => { if (e.touches.length >= 2 && state === 'play') pulse(); }, { passive: true });
+  canvas.addEventListener('contextmenu', e => e.preventDefault());
+
+  // ---------- world ----------
+  const rand = (a, b) => a + Math.random() * (b - a);
+  const dist2 = (a, b) => (a.x - b.x) ** 2 + (a.y - b.y) ** 2;
+
+  let state = 'menu', paused = false, acceptStartAt = 0;
+  let player, motes, shades, particles, rings, lanterns, stars;
+  let score, time, combo, comboTimer, shake, spawnTimer, kills, gathered, flash;
+
+  stars = Array.from({ length: 160 }, () => ({ x: Math.random(), y: Math.random(), z: Math.random(), t: Math.random() * 6 }));
+
+  function reset() {
+    player = { x: W / 2, y: H / 2, vx: 0, vy: 0, r: 9, light: 100, inv: 0, trail: [] };
+    motes = []; shades = []; particles = []; rings = []; lanterns = [];
+    score = 0; time = 0; combo = 0; comboTimer = 0; shake = 0; spawnTimer = 2.5; kills = 0; gathered = 0; flash = 0;
+    for (let i = 0; i < 10; i++) spawnMote();
+  }
+
+  function spawnMote() {
+    let x, y, tries = 0;
+    do { x = rand(30, W - 30); y = rand(30, H - 30); tries++; }
+    while (player && dist2({ x, y }, player) < 120 * 120 && tries < 20);
+    motes.push({ x, y, ph: Math.random() * 6.28, life: rand(14, 22) });
+  }
+
+  function spawnShade() {
+    const side = Math.floor(Math.random() * 4), m = 40;
+    const x = side === 0 ? -m : side === 1 ? W + m : rand(0, W);
+    const y = side === 2 ? -m : side === 3 ? H + m : rand(0, H);
+    const tier = Math.random() < Math.min(0.35, time / 300) ? 'stalker' : 'drifter';
+    shades.push({
+      x, y, vx: 0, vy: 0, tier,
+      r: tier === 'stalker' ? 13 : rand(14, 22),
+      speed: (tier === 'stalker' ? 95 : 55) + time * 0.6,
+      ph: Math.random() * 6.28, born: 0
+    });
+  }
+
+  function burst(x, y, n, color, spd = 120, life = 0.8) {
+    for (let i = 0; i < n; i++) {
+      const a = Math.random() * Math.PI * 2, s = rand(0.2, 1) * spd;
+      particles.push({ x, y, vx: Math.cos(a) * s, vy: Math.sin(a) * s, life, max: life, color, r: rand(1, 2.6) });
+    }
+  }
+
+  function pulse() {
+    if (state !== 'play' || paused) return;
+    if (player.light < 12) { tone(90, 0.15, 'square', 0.04); return; }
+    player.light -= 12;
+    rings.push({ x: player.x, y: player.y, r: player.r, max: 190, hit: new Set() });
+    sfx.pulse();
+    shake = Math.max(shake, 4);
+  }
+
+  function start() {
+    reset();
+    state = 'play'; paused = false;
+    $('menu').classList.add('hidden'); $('over').classList.add('hidden'); $('paused').classList.add('hidden');
+    $('hud').classList.remove('hidden');
+  }
+
+  function setPaused(p) {
+    paused = p;
+    $('paused').classList.toggle('hidden', !p);
+  }
+
+  function gameOver() {
+    state = 'over';
+    sfx.over();
+    burst(player.x, player.y, 80, '#b79cff', 260, 1.6);
+    const final = Math.floor(score);
+    const newBest = final > best;
+    if (newBest) { best = final; store.set('void.best', String(best)); }
+    $('finalScore').textContent = (newBest ? 'NEW BEST · ' : '') + final + ' points';
+    $('finalStats').textContent = `survived ${time.toFixed(1)}s · ${gathered} mote${gathered === 1 ? '' : 's'} · ${kills} shade${kills === 1 ? '' : 's'} banished · best ${best}`;
+    $('over').classList.remove('hidden');
+    $('hud').classList.add('hidden');
+    acceptStartAt = performance.now() + 900;
+  }
+
+  // ---------- update ----------
+  function update(dt) {
+    time += dt;
+    const p = player;
+
+    // movement
+    let ax = 0, ay = 0;
+    if (keys.has('a') || keys.has('arrowleft')) ax -= 1;
+    if (keys.has('d') || keys.has('arrowright')) ax += 1;
+    if (keys.has('w') || keys.has('arrowup')) ay -= 1;
+    if (keys.has('s') || keys.has('arrowdown')) ay += 1;
+    const ACC = 1400, MAX = 320;
+    if (ax || ay) {
+      const l = Math.hypot(ax, ay); p.vx += ax / l * ACC * dt; p.vy += ay / l * ACC * dt;
+      pointer.active = false;
+    } else if (pointer.active) {
+      const dx = pointer.x - p.x, dy = pointer.y - p.y, d = Math.hypot(dx, dy);
+      if (d > 4) { const f = Math.min(1, d / 120); p.vx += dx / d * ACC * f * dt; p.vy += dy / d * ACC * f * dt; }
+    }
+    const sp = Math.hypot(p.vx, p.vy);
+    if (sp > MAX) { p.vx *= MAX / sp; p.vy *= MAX / sp; }
+    const drag = Math.pow(0.04, dt);
+    p.vx *= drag; p.vy *= drag;
+    p.x += p.vx * dt; p.y += p.vy * dt;
+    if (p.x < p.r) { p.x = p.r; p.vx *= -0.5; } if (p.x > W - p.r) { p.x = W - p.r; p.vx *= -0.5; }
+    if (p.y < p.r) { p.y = p.r; p.vy *= -0.5; } if (p.y > H - p.r) { p.y = H - p.r; p.vy *= -0.5; }
+    p.trail.push({ x: p.x, y: p.y }); if (p.trail.length > 18) p.trail.shift();
+    if (p.inv > 0) p.inv -= dt;
+
+    // light drain
+    p.light -= (2.2 + time * 0.025) * dt;
+
+    // combo
+    if (comboTimer > 0) { comboTimer -= dt; if (comboTimer <= 0) combo = 0; }
+
+    // motes
+    const target = Math.max(5, 10 - Math.floor(time / 30));
+    if (motes.length < target && Math.random() < dt * 2) spawnMote();
+    for (let i = motes.length - 1; i >= 0; i--) {
+      const m = motes[i];
+      m.ph += dt * 3; m.life -= dt;
+      // gentle magnetism when close
+      const d2 = dist2(m, p);
+      if (d2 < 70 * 70) { const d = Math.sqrt(d2) || 1; m.x += (p.x - m.x) / d * 160 * dt; m.y += (p.y - m.y) / d * 160 * dt; }
+      if (d2 < (p.r + 8) ** 2) {
+        combo++; comboTimer = 2.2; gathered++;
+        p.light = Math.min(100, p.light + 9);
+        score += 10 * combo;
+        sfx.mote(combo - 1);
+        burst(m.x, m.y, 12, '#fff3c4', 90, 0.6);
+        motes.splice(i, 1);
+        if (gathered % 25 === 0) spawnLantern();
+      } else if (m.life <= 0) {
+        burst(m.x, m.y, 4, '#6b5a2a', 30, 0.5);
+        motes.splice(i, 1);
+      }
+    }
+
+    // lanterns (rare, big refill)
+    for (let i = lanterns.length - 1; i >= 0; i--) {
+      const L = lanterns[i]; L.ph += dt * 2; L.life -= dt;
+      if (dist2(L, p) < (p.r + 16) ** 2) {
+        p.light = 100; score += 100; sfx.lantern(); flash = 0.6;
+        burst(L.x, L.y, 40, '#ffe08a', 200, 1.2);
+        lanterns.splice(i, 1);
+      } else if (L.life <= 0) lanterns.splice(i, 1);
+    }
+
+    // shades
+    spawnTimer -= dt;
+    if (spawnTimer <= 0) {
+      spawnShade();
+      spawnTimer = Math.max(0.45, 2.4 - time * 0.018) * rand(0.7, 1.3);
+    }
+    const lightR = visionRadius();
+    for (let i = shades.length - 1; i >= 0; i--) {
+      const s = shades[i];
+      s.ph += dt * 4; s.born += dt;
+      const dx = p.x - s.x, dy = p.y - s.y, d = Math.hypot(dx, dy) || 1;
+      // shades are timid inside strong light: they slow down when the light is bright & close
+      const fear = d < lightR ? 0.55 + 0.45 * (1 - p.light / 100) : 1;
+      const wob = Math.sin(s.ph) * 0.6;
+      const dirx = dx / d - dy / d * wob, diry = dy / d + dx / d * wob;
+      const steer = s.tier === 'stalker' ? 3.2 : 1.6;
+      s.vx += (dirx * s.speed * fear - s.vx) * steer * dt;
+      s.vy += (diry * s.speed * fear - s.vy) * steer * dt;
+      s.x += s.vx * dt; s.y += s.vy * dt;
+
+      if (p.inv <= 0 && d < s.r + p.r - 2) {
+        p.light -= s.tier === 'stalker' ? 22 : 18;
+        p.inv = 0.8; shake = 14; combo = 0;
+        sfx.hit();
+        burst(s.x, s.y, 30, '#5b2bd1', 180, 1);
+        shades.splice(i, 1);
+      }
+    }
+
+    // pulse rings
+    for (let i = rings.length - 1; i >= 0; i--) {
+      const r = rings[i];
+      r.r += 520 * dt;
+      for (let j = shades.length - 1; j >= 0; j--) {
+        const s = shades[j];
+        const d = Math.hypot(s.x - r.x, s.y - r.y);
+        if (d < r.r + s.r) {
+          kills++; score += 25 * (1 + Math.floor(combo / 5));
+          burst(s.x, s.y, 22, '#d8c8ff', 160, 0.9);
+          sfx.kill();
+          shades.splice(j, 1);
+        }
+      }
+      if (r.r >= r.max) rings.splice(i, 1);
+    }
+
+    // particles
+    for (let i = particles.length - 1; i >= 0; i--) {
+      const q = particles[i];
+      q.life -= dt; q.x += q.vx * dt; q.y += q.vy * dt; q.vx *= 0.96; q.vy *= 0.96;
+      if (q.life <= 0) particles.splice(i, 1);
+    }
+
+    score += dt * 2;
+    shake *= Math.pow(0.02, dt);
+    flash = Math.max(0, flash - dt);
+
+    if (p.light <= 0) { p.light = 0; gameOver(); }
+  }
+
+  function spawnLantern() {
+    lanterns.push({ x: rand(60, W - 60), y: rand(60, H - 60), ph: 0, life: 12 });
+  }
+
+  function visionRadius() {
+    const l = player ? player.light : 100;
+    return 110 + l * 3.6 + Math.min(W, H) * 0.12;
+  }
+
+  // ---------- render ----------
+  function render(t) {
+    ctx.save();
+    if (shake > 0.3) ctx.translate(rand(-shake, shake), rand(-shake, shake));
+
+    // background
+    ctx.fillStyle = '#04030a';
+    ctx.fillRect(-20, -20, W + 40, H + 40);
+
+    // starfield (parallax with player)
+    const px = player ? (player.x - W / 2) : 0, py = player ? (player.y - H / 2) : 0;
+    for (const s of stars) {
+      const x = ((s.x * W - px * s.z * 0.08) % W + W) % W;
+      const y = ((s.y * H - py * s.z * 0.08) % H + H) % H;
+      const a = 0.15 + 0.35 * s.z * (0.6 + 0.4 * Math.sin(t * 0.001 + s.t));
+      ctx.fillStyle = `rgba(190,180,255,${a})`;
+      ctx.fillRect(x, y, s.z * 1.6 + 0.4, s.z * 1.6 + 0.4);
+    }
+
+    if (state === 'menu') { drawMenuOrb(t); ctx.restore(); return; }
+
+    // pool of light around the player
+    if (state === 'play') {
+      ctx.globalCompositeOperation = 'lighter';
+      glow(player.x, player.y, visionRadius() * 0.9, `rgba(90,70,170,${0.08 + player.light / 900})`);
+      ctx.globalCompositeOperation = 'source-over';
+    }
+
+    // motes
+    ctx.globalCompositeOperation = 'lighter';
+    for (const m of motes) {
+      const fade = Math.min(1, m.life / 3);
+      const r = 4 + Math.sin(m.ph) * 1.2;
+      glow(m.x, m.y, r * 4, `rgba(255,236,170,${0.35 * fade})`);
+      ctx.fillStyle = `rgba(255,248,220,${fade})`;
+      ctx.beginPath(); ctx.arc(m.x, m.y, r * 0.6, 0, 7); ctx.fill();
+    }
+    for (const L of lanterns) {
+      const fade = Math.min(1, L.life / 3) * (L.life < 3 ? 0.5 + 0.5 * Math.sin(L.life * 12) : 1);
+      glow(L.x, L.y, 60 + Math.sin(L.ph) * 8, `rgba(255,200,90,${0.45 * fade})`);
+      ctx.strokeStyle = `rgba(255,230,160,${fade})`; ctx.lineWidth = 2;
+      ctx.beginPath();
+      for (let k = 0; k < 6; k++) { const a = L.ph * 0.5 + k * Math.PI / 3; ctx.lineTo(L.x + Math.cos(a) * 12, L.y + Math.sin(a) * 12); }
+      ctx.closePath(); ctx.stroke();
+    }
+    ctx.globalCompositeOperation = 'source-over';
+
+    // shades (bodies)
+    for (const s of shades) drawShade(s, false);
+
+    // pulse rings
+    for (const r of rings) {
+      const a = 1 - r.r / r.max;
+      ctx.strokeStyle = `rgba(216,200,255,${a})`; ctx.lineWidth = 3 + a * 6;
+      ctx.beginPath(); ctx.arc(r.x, r.y, r.r, 0, 7); ctx.stroke();
+    }
+
+    // particles
+    ctx.globalCompositeOperation = 'lighter';
+    for (const q of particles) {
+      ctx.globalAlpha = Math.max(0, q.life / q.max);
+      ctx.fillStyle = q.color;
+      ctx.beginPath(); ctx.arc(q.x, q.y, q.r, 0, 7); ctx.fill();
+    }
+    ctx.globalAlpha = 1;
+
+    // player
+    if (state === 'play') {
+      const p = player;
+      for (let i = 0; i < p.trail.length; i++) {
+        const tr = p.trail[i], k = i / p.trail.length;
+        ctx.fillStyle = `rgba(200,180,255,${k * 0.25})`;
+        ctx.beginPath(); ctx.arc(tr.x, tr.y, p.r * k, 0, 7); ctx.fill();
+      }
+      const blink = p.inv > 0 && Math.floor(p.inv * 20) % 2 === 0;
+      if (!blink) {
+        glow(p.x, p.y, 40 + p.light * 0.3, `rgba(220,205,255,${0.25 + p.light / 250})`);
+        ctx.fillStyle = '#fbf8ff';
+        ctx.beginPath(); ctx.arc(p.x, p.y, p.r * (0.6 + p.light / 250), 0, 7); ctx.fill();
+      }
+    }
+    ctx.globalCompositeOperation = 'source-over';
+
+    // darkness
+    if (state === 'play' || state === 'over') {
+      const R = state === 'play' ? visionRadius() : Math.max(0, visionRadius() * 0.3);
+      const cx = player.x, cy = player.y;
+      const g = ctx.createRadialGradient(cx, cy, 0, cx, cy, R);
+      g.addColorStop(0, 'rgba(2,1,8,0)');
+      g.addColorStop(0.55, 'rgba(2,1,8,0.1)');
+      g.addColorStop(0.85, 'rgba(2,1,8,0.7)');
+      g.addColorStop(1, 'rgba(2,1,8,0.93)');
+      ctx.fillStyle = g;
+      ctx.fillRect(-20, -20, W + 40, H + 40);
+
+      // things that pierce the dark: shade eyes and mote twinkles
+      ctx.globalCompositeOperation = 'lighter';
+      for (const m of motes) {
+        const a = 0.45 + 0.3 * Math.sin(m.ph * 1.7);
+        ctx.fillStyle = `rgba(255,236,170,${a * Math.min(1, m.life / 3)})`;
+        ctx.fillRect(m.x - 1.5, m.y - 1.5, 3, 3);
+      }
+      for (const L of lanterns) glow(L.x, L.y, 26, 'rgba(255,200,90,0.35)');
+      ctx.globalCompositeOperation = 'source-over';
+      for (const s of shades) drawShade(s, true);
+    }
+
+    if (flash > 0) { ctx.fillStyle = `rgba(255,230,170,${flash * 0.4})`; ctx.fillRect(-20, -20, W + 40, H + 40); }
+
+    // low light warning vignette
+    if (state === 'play' && player.light < 25) {
+      const a = (1 - player.light / 25) * (0.25 + 0.15 * Math.sin(t * 0.012));
+      ctx.strokeStyle = `rgba(120,60,255,${a})`; ctx.lineWidth = 24;
+      ctx.strokeRect(0, 0, W, H);
+    }
+
+    ctx.restore();
+  }
+
+  function glow(x, y, r, color) {
+    const g = ctx.createRadialGradient(x, y, 0, x, y, r);
+    g.addColorStop(0, color); g.addColorStop(1, 'rgba(0,0,0,0)');
+    ctx.fillStyle = g;
+    ctx.fillRect(x - r, y - r, r * 2, r * 2);
+  }
+
+  function drawShade(s, eyesOnly) {
+    const appear = Math.min(1, s.born / 0.6);
+    const ang = Math.atan2(s.vy, s.vx);
+    if (!eyesOnly) {
+      // wavy dark body with violet rim
+      ctx.beginPath();
+      const N = 14;
+      for (let k = 0; k <= N; k++) {
+        const a = k / N * Math.PI * 2;
+        const rr = s.r * (1 + 0.18 * Math.sin(a * 3 + s.ph * 1.5)) * appear;
+        ctx.lineTo(s.x + Math.cos(a) * rr, s.y + Math.sin(a) * rr);
+      }
+      ctx.fillStyle = '#07040f';
+      ctx.fill();
+      ctx.strokeStyle = s.tier === 'stalker' ? 'rgba(255,80,140,0.7)' : 'rgba(140,90,255,0.6)';
+      ctx.lineWidth = 1.5; ctx.stroke();
+    }
+    // eyes
+    const ex = Math.cos(ang), ey = Math.sin(ang), nx = -ey, ny = ex;
+    const off = s.r * 0.35, fwd = s.r * 0.3;
+    const col = s.tier === 'stalker' ? '255,90,150' : '190,150,255';
+    const blink = Math.sin(s.ph * 0.37) > 0.97 ? 0.15 : 1;
+    ctx.fillStyle = `rgba(${col},${(eyesOnly ? 0.55 : 0.95) * appear * blink})`;
+    for (const sgn of [-1, 1]) {
+      ctx.beginPath();
+      ctx.ellipse(s.x + ex * fwd + nx * off * sgn, s.y + ey * fwd + ny * off * sgn, 2.4, 1.4, ang, 0, 7);
+      ctx.fill();
+    }
+  }
+
+  function drawMenuOrb(t) {
+    const x = W / 2, y = H / 2;
+    ctx.globalCompositeOperation = 'lighter';
+    glow(x, y, 220 + Math.sin(t * 0.002) * 20, 'rgba(120,90,255,0.18)');
+    ctx.globalCompositeOperation = 'source-over';
+  }
+
+  // ---------- HUD ----------
+  let hudScore = -1;
+  function hud() {
+    if (state !== 'play') return;
+    $('lightFill').style.width = Math.max(0, player.light) + '%';
+    const s = Math.floor(score);
+    if (s !== hudScore) { $('score').textContent = s; hudScore = s; }
+    $('combo').textContent = combo > 1 ? `chain ×${combo}` : '';
+  }
+
+  $('best').textContent = best ? `best ${best}` : '';
+
+  // ---------- loop ----------
+  let last = performance.now();
+  function frame(now) {
+    const dt = Math.min(0.033, (now - last) / 1000);
+    last = now;
+    if (state === 'play' && !paused) update(dt);
+    else if (state === 'over') {
+      for (let i = particles.length - 1; i >= 0; i--) {
+        const q = particles[i]; q.life -= dt; q.x += q.vx * dt; q.y += q.vy * dt; q.vx *= 0.97; q.vy *= 0.97;
+        if (q.life <= 0) particles.splice(i, 1);
+      }
+      shake *= 0.9;
+    }
+    render(now);
+    hud();
+    requestAnimationFrame(frame);
+  }
+  requestAnimationFrame(frame);
+})();
+</script>
+</body>
+</html>
