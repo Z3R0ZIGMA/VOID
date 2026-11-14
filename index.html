@@ -5,26 +5,43 @@
 <meta name="viewport" content="width=device-width, initial-scale=1, maximum-scale=1, user-scalable=no">
 <title>VOID</title>
 <style>
-  :root { --fg: #e8e4ff; --dim: #8a83b8; --accent: #b79cff; }
+  :root { --fg: #e8e4ff; --dim: #8a83b8; --accent: #b79cff; --barbg: #1a1630; }
+  body.day { --fg: #1b2140; --dim: #3d4775; --accent: #ffffff; --barbg: rgba(27,33,64,0.18); }
   html, body { margin: 0; height: 100%; background: #000; overflow: hidden; touch-action: none; }
   body { font-family: ui-monospace, Menlo, Consolas, monospace; color: var(--fg); user-select: none; -webkit-user-select: none; }
   canvas { display: block; width: 100vw; height: 100vh; }
   #hud { position: fixed; top: 14px; left: 16px; right: 16px; display: flex; justify-content: space-between; pointer-events: none; font-size: 14px; letter-spacing: 0.08em; }
-  #hud .bar { width: min(220px, 40vw); height: 6px; background: #1a1630; border-radius: 3px; overflow: hidden; margin-top: 6px; }
+  #hud .bar { width: min(220px, 40vw); height: 6px; background: var(--barbg); border-radius: 3px; overflow: hidden; margin-top: 6px; }
   #hud .fill { height: 100%; width: 100%; background: linear-gradient(90deg, #6b4dff, #f2e9ff); transition: width .1s linear; }
+  body.day #hud .fill { background: linear-gradient(90deg, #ff8a2a, #ffe27a); }
+  #goal { margin-top: 10px; color: #ffcf9a; }
+  body.day #goal { color: #b8500f; }
   #overlay { position: fixed; inset: 0; display: flex; align-items: center; justify-content: center; text-align: center; padding: 16px; pointer-events: none; }
-  #overlay .panel { max-width: 460px; }
+  #overlay .panel { max-width: 480px; }
   #overlay h1 { font-size: clamp(48px, 14vw, 96px); letter-spacing: 0.4em; margin: 0 0 8px 0.4em; font-weight: 300; text-shadow: 0 0 24px var(--accent); }
   #overlay p { color: var(--dim); line-height: 1.6; margin: 6px 0; font-size: 14px; }
   #overlay .big { color: var(--fg); font-size: 18px; }
   #overlay .blink { animation: blink 1.4s ease-in-out infinite; color: var(--fg); margin-top: 22px; }
   @keyframes blink { 50% { opacity: 0.25; } }
+  #chapters { display: flex; gap: 10px; justify-content: center; margin-top: 18px; flex-wrap: wrap; }
+  #chapters button { pointer-events: auto; font: inherit; font-size: 14px; letter-spacing: 0.12em; color: var(--fg); background: rgba(183,156,255,0.08); border: 1px solid rgba(183,156,255,0.4); border-radius: 6px; padding: 10px 16px; cursor: pointer; }
+  #chapters button:hover, #chapters button:focus-visible { background: rgba(183,156,255,0.2); outline: none; }
+  #chapters button .n { color: var(--dim); margin-right: 8px; }
   .hidden { display: none !important; }
   .reveal { opacity: 0; animation: reveal 1.4s ease forwards; }
   @keyframes reveal { from { opacity: 0; transform: translateY(6px); } to { opacity: 1; transform: none; } }
   #won h1 { color: #fff1d6; text-shadow: 0 0 32px #ffb066; font-size: clamp(36px, 10vw, 72px); letter-spacing: 0.3em; margin-left: 0.3em; }
-  #won .end { font-size: clamp(22px, 6vw, 34px); letter-spacing: 0.35em; color: var(--fg); margin-top: 28px; }
+  #won p { color: #b9b1e0; }
+  #won .big { color: #f3eeff; }
+  #won .end { font-size: clamp(22px, 6vw, 34px); letter-spacing: 0.35em; color: #f3eeff; margin-top: 28px; }
   #won .tease { font-size: clamp(18px, 5vw, 26px); color: #c9a6ff; font-style: italic; letter-spacing: 0.1em; text-shadow: 0 0 18px #7a3cff; }
+  #won .blink { color: #f3eeff; }
+  #won.dawn .tease { color: #dde3f2; text-shadow: 0 0 18px #4a5578; }
+  #intro { position: fixed; left: 0; right: 0; top: 22%; text-align: center; pointer-events: none; padding: 0 16px; animation: intro 5s ease forwards; }
+  #intro .chap { letter-spacing: 0.5em; font-size: 13px; color: var(--dim); }
+  #intro h2 { font-size: clamp(30px, 9vw, 54px); font-weight: 300; letter-spacing: 0.4em; margin: 6px 0 10px 0.4em; text-shadow: 0 0 24px var(--accent); }
+  #intro p { color: var(--dim); font-size: 14px; line-height: 1.6; margin: 4px auto; max-width: 440px; }
+  @keyframes intro { 0% { opacity: 0; } 12% { opacity: 1; } 78% { opacity: 1; } 100% { opacity: 0; } }
 </style>
 </head>
 <body>
@@ -34,12 +51,19 @@
   <div>
     <div>LIGHT</div>
     <div class="bar"><div class="fill" id="lightFill"></div></div>
-    <div id="dawn" style="color:#ffcf9a; margin-top:10px"></div>
+    <div id="goal"></div>
   </div>
   <div style="text-align:right">
     <div id="score">0</div>
     <div id="combo" style="color:var(--dim)"></div>
   </div>
+</div>
+
+<div id="intro" class="hidden">
+  <div class="chap" id="introChap"></div>
+  <h2 id="introName"></h2>
+  <p id="introText"></p>
+  <p id="introHint"></p>
 </div>
 
 <div id="overlay">
@@ -51,25 +75,26 @@
        Survive until <b style="color:#ffcf9a">dawn</b>.</p>
     <p><b>Move</b> — WASD / arrows / mouse / touch-drag<br>
        <b>Pulse</b> — Space / click / double-tap (costs light, banishes nearby shades)<br>
-       <b>Mute</b> — M &nbsp; · &nbsp; <b>Pause</b> — P</p>
-    <p class="blink">press space or tap to begin</p>
+       <b>Mute</b> — M &nbsp; · &nbsp; <b>Pause</b> — P &nbsp; · &nbsp; <b>Menu</b> — Esc</p>
+    <p class="blink" id="menuPrompt">press space or tap to begin</p>
+    <div id="chapters" class="hidden"></div>
     <p id="best"></p>
   </div>
   <div class="panel hidden" id="over">
     <h1 style="font-size:clamp(32px,9vw,56px)">FADED</h1>
     <p class="big" id="finalScore"></p>
     <p id="finalStats"></p>
-    <p class="blink">press space or tap to try again</p>
+    <p class="blink">press space or tap to try again · Esc for menu</p>
   </div>
   <div class="panel hidden" id="won">
-    <h1 class="reveal">VICTORY</h1>
+    <h1 class="reveal" id="wonTitle"></h1>
     <p class="big reveal" style="animation-delay:.8s" id="wonScore"></p>
     <p class="reveal" style="animation-delay:1.2s" id="wonStats"></p>
-    <p class="end reveal" style="animation-delay:3s">THE END...</p>
-    <p class="tease reveal" style="animation-delay:5.5s">...or is it?</p>
-    <p class="reveal" style="animation-delay:8s"><span class="blink" style="display:inline-block">press space or tap to play again</span></p>
+    <p class="end reveal" style="animation-delay:3s" id="wonEnd"></p>
+    <p class="tease reveal" style="animation-delay:5.5s" id="wonTease"></p>
+    <p class="reveal" style="animation-delay:8s"><span class="blink" style="display:inline-block" id="wonPrompt"></span></p>
   </div>
-  <div class="panel hidden" id="paused"><h1 style="font-size:40px">PAUSED</h1></div>
+  <div class="panel hidden" id="paused"><h1 style="font-size:40px">PAUSED</h1><p>Esc for menu</p></div>
 </div>
 
 <script>
@@ -88,12 +113,36 @@
   window.addEventListener('resize', resize);
   resize();
 
+  // ---------- chapters ----------
+  // Everything that differs between chapters lives here. To add a chapter,
+  // add an entry, point the previous chapter's ending.next at it, and give it
+  // an enemy type and ability that update()/render() know how to handle.
+  const CHAPTERS = {
+    1: {
+      num: 1, roman: 'I', name: 'NIGHT', goal: 'DAWN', duration: 300,
+      enemy: 'shade', ability: 'pulse',
+      intro: 'You are the last light in the dark. Survive until dawn.',
+      hint: 'Space / click / double-tap to pulse',
+      ending: { title: 'VICTORY', end: 'THE END...', tease: '...or is it?', bonusLabel: 'dawn bonus', next: 2 }
+    },
+    2: {
+      num: 2, roman: 'II', name: 'DAY', goal: 'DUSK', duration: 300,
+      enemy: 'cloud', ability: 'flare',
+      intro: 'The sun is up, and your light burns brighter. Clouds roll in to smother it. Survive until dusk.',
+      hint: 'Hold Space / mouse button / two fingers to charge a solar flare. Release to burn clouds away.',
+      ending: { title: 'VICTORY', end: 'THE END...', tease: '...or is it?', bonusLabel: 'dusk bonus', next: null }
+    }
+  };
+  const LAST_CHAPTER = Math.max(...Object.keys(CHAPTERS).map(Number));
+  let CH = CHAPTERS[1];
+
   // ---------- storage ----------
   const store = {
     get(k) { try { return localStorage.getItem(k); } catch (e) { return null; } },
     set(k, v) { try { localStorage.setItem(k, v); } catch (e) {} }
   };
   let best = parseInt(store.get('void.best') || '0', 10) || 0;
+  let unlocked = Math.min(LAST_CHAPTER, Math.max(1, parseInt(store.get('void.unlocked') || '1', 10) || 1));
 
   // ---------- audio ----------
   let audio = null, muted = store.get('void.muted') === '1';
@@ -117,12 +166,18 @@
   const sfx = {
     mote(n) { tone(440 * Math.pow(2, PENTA[Math.min(n, PENTA.length - 1)] / 12), 0.25, 'sine', 0.07); },
     hit() { tone(110, 0.4, 'sawtooth', 0.09, -60); },
+    smother() { tone(140, 0.5, 'sine', 0.08, -70); },
     pulse() { tone(220, 0.5, 'triangle', 0.1, 440); },
+    flare(c) { tone(260 + 200 * c, 0.6, 'triangle', 0.1, 500); if (c > 0.95) tone(130, 0.9, 'sawtooth', 0.05, 260); },
+    fizzle() { tone(90, 0.15, 'square', 0.04); },
     kill() { tone(660, 0.15, 'square', 0.03, -300); },
+    puff() { tone(900, 0.25, 'sine', 0.04, 600); },
     over() { tone(220, 1.2, 'sine', 0.1, -180); },
     lantern() { tone(523, 0.6, 'triangle', 0.08, 523); },
     dawn() { [523, 659, 784, 1047].forEach((f, i) => setTimeout(() => tone(f, 2.4, 'triangle', 0.06), i * 180)); },
-    eyes() { tone(55, 3, 'sawtooth', 0.07, -15); tone(58, 3, 'sine', 0.08, -10); }
+    dusk() { [784, 659, 523, 392].forEach((f, i) => setTimeout(() => tone(f, 2.4, 'triangle', 0.06), i * 220)); },
+    eyes() { tone(55, 3, 'sawtooth', 0.07, -15); tone(58, 3, 'sine', 0.08, -10); },
+    gather() { tone(70, 3.5, 'sine', 0.09, -10); tone(105, 3.5, 'triangle', 0.03, -20); }
   };
 
   // ---------- input ----------
@@ -134,66 +189,87 @@
     ensureAudio();
     if (k === 'm') { muted = !muted; store.set('void.muted', muted ? '1' : '0'); return; }
     if (k === 'p' && state === 'play') { setPaused(!paused); return; }
+    if (k === 'escape') { if (state === 'play' && !paused) setPaused(true); else if (state !== 'menu') toMenu(); return; }
+    if (state === 'menu' && CHAPTERS[k] && +k <= unlocked) { start(+k); return; }
     if (k === ' ') {
-      if (state !== 'play') { if (performance.now() > acceptStartAt) start(); }
-      else pulse();
+      if (e.repeat) return;
+      if (state === 'play') { if (paused) setPaused(false); else abilityDown(); }
+      else advance();
       return;
     }
     keys.add(k);
   });
-  window.addEventListener('keyup', e => keys.delete(e.key.toLowerCase()));
-  window.addEventListener('blur', () => { keys.clear(); if (state === 'play') setPaused(true); });
+  window.addEventListener('keyup', e => {
+    const k = e.key.toLowerCase();
+    if (k === ' ') abilityUp();
+    keys.delete(k);
+  });
+  window.addEventListener('blur', () => { keys.clear(); charging = false; if (state === 'play') setPaused(true); });
 
   let lastTap = 0;
   canvas.addEventListener('pointerdown', e => {
     ensureAudio();
-    if (state !== 'play') { if (performance.now() > acceptStartAt) start(); return; }
+    if (state !== 'play') { advance(); return; }
     if (paused) { setPaused(false); return; }
-    if (e.pointerType === 'mouse') { pulse(); return; }
+    if (e.pointerType === 'mouse') { abilityDown(); return; }
+    if (!e.isPrimary) return;
     const now = performance.now();
     pointer.active = true; pointer.x = e.clientX; pointer.y = e.clientY;
-    if (now - lastTap < 280) pulse(); // double-tap pulses too
+    if (now - lastTap < 280) { abilityDown(); abilityUp(); } // double-tap: quick pulse / flare
     lastTap = now;
   });
   canvas.addEventListener('pointermove', e => {
-    if (e.pointerType === 'mouse' || pointer.active) { pointer.active = true; pointer.x = e.clientX; pointer.y = e.clientY; }
+    if (e.pointerType === 'mouse' || (pointer.active && e.isPrimary)) { pointer.active = true; pointer.x = e.clientX; pointer.y = e.clientY; }
   });
-  canvas.addEventListener('pointerup', e => { if (e.pointerType !== 'mouse') pointer.active = false; });
+  canvas.addEventListener('pointerup', e => {
+    if (e.pointerType === 'mouse') abilityUp();
+    else if (e.isPrimary) pointer.active = false;
+  });
   canvas.addEventListener('pointercancel', () => { pointer.active = false; });
-  canvas.addEventListener('touchstart', e => { if (e.touches.length >= 2 && state === 'play') pulse(); }, { passive: true });
+  canvas.addEventListener('touchstart', e => { if (e.touches.length >= 2 && state === 'play') abilityDown(); }, { passive: true });
+  canvas.addEventListener('touchend', e => { if (e.touches.length < 2) abilityUp(); }, { passive: true });
   canvas.addEventListener('contextmenu', e => e.preventDefault());
 
   // ---------- world ----------
   const rand = (a, b) => a + Math.random() * (b - a);
   const dist2 = (a, b) => (a.x - b.x) ** 2 + (a.y - b.y) ** 2;
 
-  const DAWN = 300;           // seconds you must survive
-  const TEASE_AT = 5.5;       // seconds into the ending when "...or is it?" appears
+  const TEASE_AT = 5.5;       // seconds into an ending when "...or is it?" appears
   let state = 'menu', paused = false, acceptStartAt = 0, wonAt = 0, teased = false;
-  let player, motes, shades, particles, rings, lanterns, stars;
-  let score, time, combo, comboTimer, shake, spawnTimer, kills, gathered, flash;
+  let player, motes, shades, clouds, particles, rings, lanterns, crowd;
+  let score = 0, time, combo, comboTimer, shake, spawnTimer, kills, gathered, flash;
+  let charging = false, charge = 0, smothered = false;
 
-  stars = Array.from({ length: 160 }, () => ({ x: Math.random(), y: Math.random(), z: Math.random(), t: Math.random() * 6 }));
+  const stars = Array.from({ length: 160 }, () => ({ x: Math.random(), y: Math.random(), z: Math.random(), t: Math.random() * 6 }));
+  const haze = Array.from({ length: 6 }, () => ({ x: Math.random(), y: rand(0.05, 0.9), s: rand(0.6, 1.4), v: rand(4, 12) }));
 
-  function reset() {
+  function reset(carryScore) {
     player = { x: W / 2, y: H / 2, vx: 0, vy: 0, r: 9, light: 100, inv: 0, trail: [] };
-    motes = []; shades = []; particles = []; rings = []; lanterns = [];
-    score = 0; time = 0; combo = 0; comboTimer = 0; shake = 0; spawnTimer = 2.5; kills = 0; gathered = 0; flash = 0;
+    motes = []; shades = []; clouds = []; particles = []; rings = []; lanterns = []; crowd = [];
+    if (!carryScore) score = 0;
+    time = 0; combo = 0; comboTimer = 0; shake = 0; spawnTimer = 2.5; kills = 0; gathered = 0; flash = 0;
+    charging = false; charge = 0; smothered = false;
     for (let i = 0; i < 10; i++) spawnMote();
   }
 
   function spawnMote(at, life) {
-    if (at) { motes.push({ x: at.x, y: at.y, ph: Math.random() * 6.28, life }); return; }
+    if (at) { motes.push({ x: at.x + rand(-8, 8), y: at.y + rand(-8, 8), ph: Math.random() * 6.28, life }); return; }
     let x, y, tries = 0;
     do { x = rand(30, W - 30); y = rand(30, H - 30); tries++; }
     while (player && dist2({ x, y }, player) < 120 * 120 && tries < 20);
     motes.push({ x, y, ph: Math.random() * 6.28, life: rand(14, 22) });
   }
 
+  function edgePoint(m) {
+    const side = Math.floor(Math.random() * 4);
+    return {
+      x: side === 0 ? -m : side === 1 ? W + m : rand(0, W),
+      y: side === 2 ? -m : side === 3 ? H + m : rand(0, H)
+    };
+  }
+
   function spawnShade() {
-    const side = Math.floor(Math.random() * 4), m = 40;
-    const x = side === 0 ? -m : side === 1 ? W + m : rand(0, W);
-    const y = side === 2 ? -m : side === 3 ? H + m : rand(0, H);
+    const { x, y } = edgePoint(40);
     const tier = Math.random() < Math.min(0.35, time / 300) ? 'stalker' : 'drifter';
     shades.push({
       x, y, vx: 0, vy: 0, tier,
@@ -204,6 +280,28 @@
     });
   }
 
+  function spawnCloud() {
+    const { x, y } = edgePoint(70);
+    const storm = Math.random() < Math.min(0.4, time / 260);
+    clouds.push(makeCloud(x, y, storm ? rand(30, 40) : rand(26, 36), storm));
+  }
+
+  function makeCloud(x, y, r, storm) {
+    const puffs = [];
+    const n = 5 + Math.floor(Math.random() * 3);
+    for (let k = 0; k < n; k++) {
+      const a = (k / n) * Math.PI * 2 + rand(-0.3, 0.3);
+      puffs.push({ ox: Math.cos(a) * r * 0.55, oy: Math.sin(a) * r * 0.35, r: r * rand(0.45, 0.65) });
+    }
+    puffs.push({ ox: 0, oy: -r * 0.1, r: r * 0.7 });
+    const hp = storm ? 4 : 2;
+    return {
+      x, y, vx: 0, vy: 0, storm, r, puffs, hp, maxHp: hp,
+      speed: (storm ? 62 : 42) + Math.min((time || 0) * 0.2, 45),
+      life: rand(22, 30), born: 0, ph: Math.random() * 6.28, hitFlash: 0
+    };
+  }
+
   function burst(x, y, n, color, spd = 120, life = 0.8) {
     for (let i = 0; i < n; i++) {
       const a = Math.random() * Math.PI * 2, s = rand(0.2, 1) * spd;
@@ -211,56 +309,170 @@
     }
   }
 
-  function pulse() {
+  // ---------- abilities ----------
+  // Chapter I: an instant pulse. Chapter II: a solar flare you hold to charge.
+  function abilityDown() {
     if (state !== 'play' || paused) return;
-    if (player.light < 12) { tone(90, 0.15, 'square', 0.04); return; }
+    if (CH.ability === 'pulse') { pulse(); return; }
+    if (!charging) { charging = true; charge = 0; }
+  }
+  function abilityUp() {
+    if (!charging) return;
+    charging = false;
+    if (state === 'play' && !paused) flare(charge);
+  }
+
+  function pulse() {
+    if (player.light < 12) { sfx.fizzle(); return; }
     player.light -= 12;
-    rings.push({ x: player.x, y: player.y, r: player.r, max: 190, hit: new Set() });
+    rings.push({ x: player.x, y: player.y, r: player.r, max: 190, speed: 520, dmg: 1, hit: new Set(), kind: 'pulse' });
     sfx.pulse();
     shake = Math.max(shake, 4);
   }
 
-  function start() {
-    reset();
+  function flare(c) {
+    const cost = 8 + 14 * c;
+    if (player.light < cost) { sfx.fizzle(); return; }
+    player.light -= cost;
+    rings.push({
+      x: player.x, y: player.y, r: player.r, max: 150 + 230 * c, speed: 600,
+      dmg: 1 + Math.floor(c * 3 + 0.001), hit: new Set(), kind: 'flare', power: c
+    });
+    sfx.flare(c);
+    shake = Math.max(shake, 3 + c * 7);
+    if (c > 0.95) burst(player.x, player.y, 30, '#ffd36b', 260, 0.7);
+  }
+
+  // ---------- flow ----------
+  function start(num, carryScore = false) {
+    CH = CHAPTERS[num];
+    reset(carryScore);
     state = 'play'; paused = false;
-    $('menu').classList.add('hidden'); $('over').classList.add('hidden'); $('paused').classList.add('hidden');
-    $('won').classList.add('hidden');
+    for (const id of ['menu', 'over', 'paused', 'won']) $(id).classList.add('hidden');
     $('hud').classList.remove('hidden');
+    document.body.classList.toggle('day', CH.num === 2);
+    showIntro();
+  }
+
+  function showIntro() {
+    $('introChap').textContent = 'CHAPTER ' + CH.roman;
+    $('introName').textContent = CH.name;
+    $('introText').textContent = CH.intro;
+    $('introHint').textContent = CH.hint;
+    const el = $('intro');
+    el.classList.add('hidden'); void el.offsetWidth; el.classList.remove('hidden');
+    clearTimeout(showIntro.t);
+    showIntro.t = setTimeout(() => el.classList.add('hidden'), 5000);
+  }
+
+  function advance() {
+    if (performance.now() < acceptStartAt) return;
+    if (state === 'menu') start(unlocked);
+    else if (state === 'over') start(CH.num);
+    else if (state === 'won') {
+      if (CH.ending.next) start(CH.ending.next, true);
+      else toMenu();
+    }
+  }
+
+  function toMenu() {
+    state = 'menu'; paused = false; charging = false;
+    for (const id of ['over', 'paused', 'won', 'hud', 'intro']) $(id).classList.add('hidden');
+    document.body.classList.remove('day');
+    refreshMenu();
+    $('menu').classList.remove('hidden');
+    acceptStartAt = performance.now() + 300;
+  }
+
+  function refreshMenu() {
+    $('best').textContent = best ? `best ${best}` : '';
+    const list = $('chapters');
+    if (unlocked < 2) {
+      list.classList.add('hidden');
+      $('menuPrompt').textContent = 'press space or tap to begin';
+      return;
+    }
+    $('menuPrompt').textContent = `press space to continue · Chapter ${CHAPTERS[unlocked].roman}`;
+    list.innerHTML = '';
+    for (let n = 1; n <= unlocked; n++) {
+      const b = document.createElement('button');
+      b.innerHTML = `<span class="n">${n}</span>${CHAPTERS[n].roman} · ${CHAPTERS[n].name}`;
+      b.addEventListener('click', ev => { ev.stopPropagation(); ensureAudio(); start(n); });
+      list.appendChild(b);
+    }
+    list.classList.remove('hidden');
   }
 
   function setPaused(p) {
     paused = p;
+    if (p) charging = false;
     $('paused').classList.toggle('hidden', !p);
   }
 
-  function gameOver() {
-    state = 'over';
-    sfx.over();
-    burst(player.x, player.y, 80, '#b79cff', 260, 1.6);
+  function saveBest() {
     const final = Math.floor(score);
     const newBest = final > best;
     if (newBest) { best = final; store.set('void.best', String(best)); }
+    return { final, newBest };
+  }
+
+  function gameOver() {
+    state = 'over'; charging = false;
+    sfx.over();
+    burst(player.x, player.y, 80, CH.num === 1 ? '#b79cff' : '#ff9a3c', 260, 1.6);
+    const { final, newBest } = saveBest();
+    const foes = CH.enemy === 'cloud' ? ['cloud', 'burned away'] : ['shade', 'banished'];
     $('finalScore').textContent = (newBest ? 'NEW BEST · ' : '') + final + ' points';
-    $('finalStats').textContent = `survived ${time.toFixed(1)}s · ${gathered} mote${gathered === 1 ? '' : 's'} · ${kills} shade${kills === 1 ? '' : 's'} banished · best ${best}`;
+    $('finalStats').textContent = `Chapter ${CH.roman} · survived ${time.toFixed(1)}s · ${gathered} mote${gathered === 1 ? '' : 's'} · ${kills} ${foes[0]}${kills === 1 ? '' : 's'} ${foes[1]} · best ${best}`;
     $('over').classList.remove('hidden');
     $('hud').classList.add('hidden');
     acceptStartAt = performance.now() + 900;
   }
 
   function victory() {
-    state = 'won'; wonAt = performance.now(); teased = false;
+    state = 'won'; wonAt = performance.now(); teased = false; charging = false;
     const bonus = 1000 + Math.round(player.light) * 10;
     score += bonus;
     for (const s of shades) burst(s.x, s.y, 18, '#ffd9a8', 140, 1.2);
-    shades = []; rings = [];
-    sfx.dawn();
-    const final = Math.floor(score);
-    const newBest = final > best;
-    if (newBest) { best = final; store.set('void.best', String(best)); }
+    for (const c of clouds) burst(c.x, c.y, 24, '#ffd2b0', 120, 1.4);
+    shades = []; clouds = []; rings = [];
+    if (CH.num === 1) sfx.dawn(); else sfx.dusk();
+    if (CH.ending.next && CH.ending.next > unlocked) { unlocked = CH.ending.next; store.set('void.unlocked', String(unlocked)); }
+    // the eyes that open in an ending: one great pair at night's end, a crowd at day's end
+    crowd = [];
+    if (CH.num === 1) {
+      // storm clouds that roll in from both sides toward the rising sun
+      for (let i = 0; i < 7; i++) {
+        const fromLeft = i % 2 === 0;
+        const c = makeCloud(fromLeft ? -120 : W + 120, rand(H * 0.66, H * 1.0), rand(50, 80), i < 3);
+        c.born = 10; c.life = 999;
+        c.tx = fromLeft ? rand(W * 0.02, W * 0.3) : rand(W * 0.1, W * 0.38); c.delay = i * 0.35;
+        c.sx = c.x;
+        crowd.push(c);
+      }
+    }
+    if (CH.num === 2) {
+      for (let i = 0; i < 18; i++) {
+        let x, y;
+        do { x = rand(30, W - 30); y = rand(30, H - 30); } while (Math.abs(x - W / 2) < W * 0.28 && y > H * 0.12 && y < H * 0.85);
+        crowd.push({ x, y, size: rand(6, 14), delay: rand(0, 2.2), ph: Math.random() * 6 });
+      }
+    }
+    document.body.classList.remove('day');
+    $('won').classList.toggle('dawn', CH.num === 1);
+    const { final, newBest } = saveBest();
+    const E = CH.ending;
+    const foes = CH.enemy === 'cloud' ? 'clouds burned away' : 'shades banished';
+    $('wonTitle').textContent = E.title;
+    $('wonEnd').textContent = E.end;
+    $('wonTease').textContent = E.tease;
+    $('wonPrompt').textContent = E.next ? 'press space or tap to continue' : 'press space or tap to return to the menu';
     $('wonScore').textContent = (newBest ? 'NEW BEST · ' : '') + final + ' points';
-    $('wonStats').textContent = `dawn bonus +${bonus} · ${gathered} motes · ${kills} shades banished`;
-    $('won').classList.remove('hidden');
+    $('wonStats').textContent = `${E.bonusLabel} +${bonus} · ${gathered} motes · ${kills} ${foes}`;
+    const el = $('won');
+    el.classList.add('hidden'); void el.offsetWidth; el.classList.remove('hidden');
     $('hud').classList.add('hidden');
+    $('intro').classList.add('hidden');
     acceptStartAt = performance.now() + 8000;
   }
 
@@ -269,13 +481,16 @@
     time += dt;
     const p = player;
 
+    // charging the flare
+    if (charging) charge = Math.min(1, charge + dt / 1.1);
+
     // movement
     let ax = 0, ay = 0;
     if (keys.has('a') || keys.has('arrowleft')) ax -= 1;
     if (keys.has('d') || keys.has('arrowright')) ax += 1;
     if (keys.has('w') || keys.has('arrowup')) ay -= 1;
     if (keys.has('s') || keys.has('arrowdown')) ay += 1;
-    const ACC = 1400, MAX = 320;
+    const ACC = 1400, MAX = charging ? 210 : 320;
     if (ax || ay) {
       const l = Math.hypot(ax, ay); p.vx += ax / l * ACC * dt; p.vy += ay / l * ACC * dt;
       pointer.active = false;
@@ -285,7 +500,7 @@
     }
     const sp = Math.hypot(p.vx, p.vy);
     if (sp > MAX) { p.vx *= MAX / sp; p.vy *= MAX / sp; }
-    const drag = Math.pow(0.04, dt);
+    const drag = Math.pow(smothered ? 0.002 : 0.04, dt);
     p.vx *= drag; p.vy *= drag;
     p.x += p.vx * dt; p.y += p.vy * dt;
     if (p.x < p.r) { p.x = p.r; p.vx *= -0.5; } if (p.x > W - p.r) { p.x = W - p.r; p.vx *= -0.5; }
@@ -313,7 +528,7 @@
         p.light = Math.min(100, p.light + 9);
         score += 10 * combo;
         sfx.mote(combo - 1);
-        burst(m.x, m.y, 12, '#fff3c4', 90, 0.6);
+        burst(m.x, m.y, 12, CH.num === 1 ? '#fff3c4' : '#ffb53d', 90, 0.6);
         motes.splice(i, 1);
         if (gathered % 25 === 0) spawnLantern();
       } else if (m.life <= 0) {
@@ -327,15 +542,71 @@
       const L = lanterns[i]; L.ph += dt * 2; L.life -= dt;
       if (dist2(L, p) < (p.r + 16) ** 2) {
         p.light = 100; score += 100; sfx.lantern(); flash = 0.6;
-        burst(L.x, L.y, 40, '#ffe08a', 200, 1.2);
+        burst(L.x, L.y, 40, '#ffc04a', 200, 1.2);
         lanterns.splice(i, 1);
       } else if (L.life <= 0) lanterns.splice(i, 1);
     }
 
-    // shades
+    if (CH.enemy === 'shade') updateShades(dt, p); else updateClouds(dt, p);
+
+    // pulse / flare rings
+    for (let i = rings.length - 1; i >= 0; i--) {
+      const r = rings[i];
+      r.r += r.speed * dt;
+      for (let j = shades.length - 1; j >= 0; j--) {
+        const s = shades[j];
+        if (Math.hypot(s.x - r.x, s.y - r.y) < r.r + s.r) {
+          kills++; score += 25 * (1 + Math.floor(combo / 5));
+          burst(s.x, s.y, 22, '#d8c8ff', 160, 0.9);
+          sfx.kill();
+          spawnMote(s, 8);
+          shades.splice(j, 1);
+        }
+      }
+      for (let j = clouds.length - 1; j >= 0; j--) {
+        const c = clouds[j];
+        if (r.hit.has(c)) continue;
+        const d = Math.hypot(c.x - r.x, c.y - r.y) || 1;
+        if (d < r.r + c.r * 0.7) {
+          r.hit.add(c);
+          c.hp -= r.dmg; c.hitFlash = 0.25;
+          if (c.hp <= 0) {
+            kills++; score += (c.storm ? 70 : 40) * (1 + Math.floor(combo / 5));
+            burst(c.x, c.y, 34, '#ffffff', 170, 1.1);
+            burst(c.x, c.y, 14, '#ffc56b', 120, 0.8);
+            sfx.puff();
+            spawnMote(c, 8);
+            if (c.storm) spawnMote(c, 8);
+            clouds.splice(j, 1);
+          } else {
+            // knocked back by the blast
+            c.vx += (c.x - r.x) / d * 260; c.vy += (c.y - r.y) / d * 260;
+            burst(c.x, c.y, 8, '#ffe0a0', 80, 0.5);
+          }
+        }
+      }
+      if (r.r >= r.max) rings.splice(i, 1);
+    }
+
+    // particles
+    for (let i = particles.length - 1; i >= 0; i--) {
+      const q = particles[i];
+      q.life -= dt; q.x += q.vx * dt; q.y += q.vy * dt; q.vx *= 0.96; q.vy *= 0.96;
+      if (q.life <= 0) particles.splice(i, 1);
+    }
+
+    score += dt * 2;
+    shake *= Math.pow(0.02, dt);
+    flash = Math.max(0, flash - dt);
+
+    if (p.light <= 0) { p.light = 0; gameOver(); }
+    else if (time >= CH.duration) victory();
+  }
+
+  function updateShades(dt, p) {
     spawnTimer -= dt;
     if (spawnTimer <= 0) {
-      if (shades.length < maxShades()) spawnShade();
+      if (shades.length < Math.min(12, 4 + Math.floor(time / 20))) spawnShade();
       spawnTimer = Math.max(0.9, 2.4 - time * 0.008) * rand(0.7, 1.3);
     }
     const lightR = visionRadius();
@@ -365,42 +636,44 @@
         shades.splice(i, 1);
       }
     }
-
-    // pulse rings
-    for (let i = rings.length - 1; i >= 0; i--) {
-      const r = rings[i];
-      r.r += 520 * dt;
-      for (let j = shades.length - 1; j >= 0; j--) {
-        const s = shades[j];
-        const d = Math.hypot(s.x - r.x, s.y - r.y);
-        if (d < r.r + s.r) {
-          kills++; score += 25 * (1 + Math.floor(combo / 5));
-          burst(s.x, s.y, 22, '#d8c8ff', 160, 0.9);
-          sfx.kill();
-          spawnMote(s, 8);
-          shades.splice(j, 1);
-        }
-      }
-      if (r.r >= r.max) rings.splice(i, 1);
-    }
-
-    // particles
-    for (let i = particles.length - 1; i >= 0; i--) {
-      const q = particles[i];
-      q.life -= dt; q.x += q.vx * dt; q.y += q.vy * dt; q.vx *= 0.96; q.vy *= 0.96;
-      if (q.life <= 0) particles.splice(i, 1);
-    }
-
-    score += dt * 2;
-    shake *= Math.pow(0.02, dt);
-    flash = Math.max(0, flash - dt);
-
-    if (p.light <= 0) { p.light = 0; gameOver(); }
-    else if (time >= DAWN) victory();
   }
 
-  function maxShades() {
-    return Math.min(12, 4 + Math.floor(time / 20));
+  // Clouds don't strike and vanish like shades: they drift over you and
+  // smother your light for as long as you stay inside them.
+  function updateClouds(dt, p) {
+    spawnTimer -= dt;
+    if (spawnTimer <= 0) {
+      if (clouds.length < Math.min(9, 3 + Math.floor(time / 25))) spawnCloud();
+      spawnTimer = Math.max(1.2, 3 - time * 0.007) * rand(0.7, 1.3);
+    }
+    const was = smothered;
+    smothered = false;
+    for (let i = clouds.length - 1; i >= 0; i--) {
+      const c = clouds[i];
+      c.ph += dt; c.born += dt; c.life -= dt; c.hitFlash = Math.max(0, c.hitFlash - dt);
+      if (c.life <= 0) {
+        burst(c.x, c.y, 16, '#ffffff', 50, 1);
+        clouds.splice(i, 1);
+        continue;
+      }
+      const dx = p.x - c.x, dy = p.y - c.y, d = Math.hypot(dx, dy) || 1;
+      const wob = Math.sin(c.ph * 0.9) * 0.4;
+      const dirx = dx / d - dy / d * wob, diry = dy / d + dx / d * wob;
+      const steer = c.storm ? 1.3 : 0.8;
+      c.vx += (dirx * c.speed - c.vx) * steer * dt;
+      c.vy += (diry * c.speed - c.vy) * steer * dt;
+      c.x += c.vx * dt; c.y += c.vy * dt;
+
+      if (d < c.r * cloudScale(c) * 0.85 + p.r) {
+        smothered = true;
+        p.light -= (c.storm ? 24 : 15) * dt;
+      }
+    }
+    if (smothered && !was) { combo = 0; shake = Math.max(shake, 6); sfx.smother(); }
+  }
+
+  function cloudScale(c) {
+    return (0.6 + 0.4 * c.hp / c.maxHp) * Math.min(1, c.born / 0.8, c.life / 1.5);
   }
 
   function spawnLantern() {
@@ -412,65 +685,84 @@
     return 110 + l * 3.6 + Math.min(W, H) * 0.12;
   }
 
+  // ---------- colour helpers ----------
+  const hex = h => [parseInt(h.slice(1, 3), 16), parseInt(h.slice(3, 5), 16), parseInt(h.slice(5, 7), 16)];
+  const mix = (a, b, k) => { const A = hex(a), B = hex(b); return `rgb(${A.map((v, i) => Math.round(v + (B[i] - v) * k)).join(',')})`; };
+  const lerpSky = (A, B, k) => [mix(A[0], B[0], k), mix(A[1], B[1], k)];
+  const SKY = {
+    dawn: ['#2a2346', '#ffb27a'],
+    day:  ['#3f8fe0', '#c4e6ff'],
+    dusk: ['#2c2556', '#ff925a']
+  };
+
+  // sky colours for chapter II at the current moment: dawn -> day -> dusk
+  function daySky() {
+    if (state === 'won') return [SKY.dusk[0], SKY.dusk[1]];
+    const d = CH.duration;
+    if (time < 4) return lerpSky(SKY.dawn, SKY.day, time / 4);
+    if (time > d - 90) return lerpSky(SKY.day, SKY.dusk, Math.min(1, (time - (d - 90)) / 90));
+    return [SKY.day[0], SKY.day[1]];
+  }
+
   // ---------- render ----------
   function render(t) {
     ctx.save();
     if (shake > 0.3) ctx.translate(rand(-shake, shake), rand(-shake, shake));
 
-    // background
-    ctx.fillStyle = '#04030a';
-    ctx.fillRect(-20, -20, W + 40, H + 40);
-
-    // starfield (parallax with player)
-    const px = player ? (player.x - W / 2) : 0, py = player ? (player.y - H / 2) : 0;
-    for (const s of stars) {
-      const x = ((s.x * W - px * s.z * 0.08) % W + W) % W;
-      const y = ((s.y * H - py * s.z * 0.08) % H + H) % H;
-      const a = 0.15 + 0.35 * s.z * (0.6 + 0.4 * Math.sin(t * 0.001 + s.t));
-      ctx.fillStyle = `rgba(190,180,255,${a})`;
-      ctx.fillRect(x, y, s.z * 1.6 + 0.4, s.z * 1.6 + 0.4);
-    }
+    const night = state === 'menu' || CH.num === 1;
+    if (night) drawNightSky(t); else drawDaySky(t);
 
     if (state === 'menu') { drawMenuOrb(t); ctx.restore(); return; }
 
+    const add = night ? 'lighter' : 'source-over';
+
     // pool of light around the player
-    if (state === 'play') {
+    if (state === 'play' && night) {
       ctx.globalCompositeOperation = 'lighter';
       glow(player.x, player.y, visionRadius() * 0.9, `rgba(90,70,170,${0.08 + player.light / 900})`);
       ctx.globalCompositeOperation = 'source-over';
     }
 
-    // motes
-    ctx.globalCompositeOperation = 'lighter';
+    // motes & lanterns
+    ctx.globalCompositeOperation = add;
     for (const m of motes) {
       const fade = Math.min(1, m.life / 3);
       const r = 4 + Math.sin(m.ph) * 1.2;
-      glow(m.x, m.y, r * 4, `rgba(255,236,170,${0.35 * fade})`);
-      ctx.fillStyle = `rgba(255,248,220,${fade})`;
-      ctx.beginPath(); ctx.arc(m.x, m.y, r * 0.6, 0, 7); ctx.fill();
+      if (night) {
+        glow(m.x, m.y, r * 4, `rgba(255,236,170,${0.35 * fade})`);
+        ctx.fillStyle = `rgba(255,248,220,${fade})`;
+        ctx.beginPath(); ctx.arc(m.x, m.y, r * 0.6, 0, 7); ctx.fill();
+      } else {
+        glow(m.x, m.y, r * 4, `rgba(255,170,40,${0.35 * fade})`);
+        ctx.fillStyle = `rgba(255,252,225,${fade})`;
+        ctx.strokeStyle = `rgba(225,120,10,${fade})`; ctx.lineWidth = 1.5;
+        ctx.beginPath(); ctx.arc(m.x, m.y, r * 0.75, 0, 7); ctx.fill(); ctx.stroke();
+      }
     }
     for (const L of lanterns) {
       const fade = Math.min(1, L.life / 3) * (L.life < 3 ? 0.5 + 0.5 * Math.sin(L.life * 12) : 1);
-      glow(L.x, L.y, 60 + Math.sin(L.ph) * 8, `rgba(255,200,90,${0.45 * fade})`);
-      ctx.strokeStyle = `rgba(255,230,160,${fade})`; ctx.lineWidth = 2;
+      glow(L.x, L.y, 60 + Math.sin(L.ph) * 8, `rgba(255,${night ? 200 : 160},90,${0.45 * fade})`);
+      ctx.strokeStyle = night ? `rgba(255,230,160,${fade})` : `rgba(220,110,10,${fade})`; ctx.lineWidth = 2;
       ctx.beginPath();
       for (let k = 0; k < 6; k++) { const a = L.ph * 0.5 + k * Math.PI / 3; ctx.lineTo(L.x + Math.cos(a) * 12, L.y + Math.sin(a) * 12); }
       ctx.closePath(); ctx.stroke();
     }
     ctx.globalCompositeOperation = 'source-over';
 
-    // shades (bodies)
+    // enemies
     for (const s of shades) drawShade(s, false);
 
-    // pulse rings
+    // rings
     for (const r of rings) {
       const a = 1 - r.r / r.max;
-      ctx.strokeStyle = `rgba(216,200,255,${a})`; ctx.lineWidth = 3 + a * 6;
+      if (r.kind === 'pulse') ctx.strokeStyle = `rgba(216,200,255,${a})`;
+      else ctx.strokeStyle = `rgba(255,${190 - 50 * r.power | 0},60,${a})`;
+      ctx.lineWidth = (3 + a * 6) * (r.kind === 'flare' ? 1 + r.power : 1);
       ctx.beginPath(); ctx.arc(r.x, r.y, r.r, 0, 7); ctx.stroke();
     }
 
     // particles
-    ctx.globalCompositeOperation = 'lighter';
+    ctx.globalCompositeOperation = add;
     for (const q of particles) {
       ctx.globalAlpha = Math.max(0, q.life / q.max);
       ctx.fillStyle = q.color;
@@ -479,24 +771,14 @@
     ctx.globalAlpha = 1;
 
     // player
-    if (state === 'play' || state === 'won') {
-      const p = player;
-      for (let i = 0; i < p.trail.length; i++) {
-        const tr = p.trail[i], k = i / p.trail.length;
-        ctx.fillStyle = `rgba(200,180,255,${k * 0.25})`;
-        ctx.beginPath(); ctx.arc(tr.x, tr.y, p.r * k, 0, 7); ctx.fill();
-      }
-      const blink = p.inv > 0 && Math.floor(p.inv * 20) % 2 === 0;
-      if (!blink) {
-        glow(p.x, p.y, 40 + p.light * 0.3, `rgba(220,205,255,${0.25 + p.light / 250})`);
-        ctx.fillStyle = '#fbf8ff';
-        ctx.beginPath(); ctx.arc(p.x, p.y, p.r * (0.6 + p.light / 250), 0, 7); ctx.fill();
-      }
-    }
+    if (state === 'play' || state === 'won') drawPlayer(t, night);
     ctx.globalCompositeOperation = 'source-over';
 
-    // darkness
-    if (state === 'play' || state === 'over') {
+    // clouds drift over everything beneath them, player included
+    for (const c of clouds) drawCloud(c);
+
+    // darkness (night only)
+    if (CH.num === 1 && (state === 'play' || state === 'over')) {
       const R = state === 'play' ? visionRadius() : Math.max(0, visionRadius() * 0.3);
       const cx = player.x, cy = player.y;
       const g = ctx.createRadialGradient(cx, cy, 0, cx, cy, R);
@@ -520,19 +802,123 @@
     }
 
     // dawn creeping up from the horizon
-    if (state === 'play') drawDawn(Math.min(1, time / DAWN) ** 2 * 0.6);
-    if (state === 'won') drawEnding(t);
+    if (state === 'play' && CH.num === 1) drawDawn(Math.min(1, time / CH.duration) ** 2 * 0.6);
+    if (state === 'won') { if (CH.num === 1) drawDawnEnding(t); else drawDuskEnding(t); }
 
     if (flash > 0) { ctx.fillStyle = `rgba(255,230,170,${flash * 0.4})`; ctx.fillRect(-20, -20, W + 40, H + 40); }
 
     // low light warning vignette
     if (state === 'play' && player.light < 25) {
       const a = (1 - player.light / 25) * (0.25 + 0.15 * Math.sin(t * 0.012));
-      ctx.strokeStyle = `rgba(120,60,255,${a})`; ctx.lineWidth = 24;
+      ctx.strokeStyle = night ? `rgba(120,60,255,${a})` : `rgba(220,60,20,${a})`; ctx.lineWidth = 24;
       ctx.strokeRect(0, 0, W, H);
     }
 
     ctx.restore();
+  }
+
+  function drawNightSky(t) {
+    ctx.fillStyle = '#04030a';
+    ctx.fillRect(-20, -20, W + 40, H + 40);
+    const px = player ? (player.x - W / 2) : 0, py = player ? (player.y - H / 2) : 0;
+    for (const s of stars) {
+      const x = ((s.x * W - px * s.z * 0.08) % W + W) % W;
+      const y = ((s.y * H - py * s.z * 0.08) % H + H) % H;
+      const a = 0.15 + 0.35 * s.z * (0.6 + 0.4 * Math.sin(t * 0.001 + s.t));
+      ctx.fillStyle = `rgba(190,180,255,${a})`;
+      ctx.fillRect(x, y, s.z * 1.6 + 0.4, s.z * 1.6 + 0.4);
+    }
+  }
+
+  function drawDaySky(t) {
+    const [top, bottom] = daySky();
+    const g = ctx.createLinearGradient(0, 0, 0, H);
+    g.addColorStop(0, top); g.addColorStop(1, bottom);
+    ctx.fillStyle = g;
+    ctx.fillRect(-20, -20, W + 40, H + 40);
+
+    // the sun arcs across the sky over the chapter, rising at dawn and setting at dusk
+    const k = state === 'won' ? 1.05 : Math.min(1, time / CH.duration);
+    const sx = W * (0.1 + 0.8 * k), sy = H * 0.95 - Math.sin(Math.PI * Math.min(1, k)) * H * 0.75;
+    ctx.globalCompositeOperation = 'lighter';
+    glow(sx, sy, 220, 'rgba(255,230,160,0.35)');
+    ctx.globalCompositeOperation = 'source-over';
+    ctx.fillStyle = k > 0.8 ? '#ffb070' : '#fff6d8';
+    ctx.beginPath(); ctx.arc(sx, sy, 34, 0, 7); ctx.fill();
+
+    // faint far-off clouds for depth
+    ctx.fillStyle = 'rgba(255,255,255,0.13)';
+    for (const h of haze) {
+      const x = ((h.x * (W + 400) + t * 0.001 * h.v * 10) % (W + 400)) - 200;
+      const y = h.y * H;
+      ctx.beginPath();
+      ctx.ellipse(x, y, 140 * h.s, 12 * h.s, 0, 0, 7);
+      ctx.ellipse(x + 60 * h.s, y - 6 * h.s, 70 * h.s, 10 * h.s, 0, 0, 7);
+      ctx.fill();
+    }
+  }
+
+  function drawPlayer(t, night) {
+    const p = player;
+    ctx.globalCompositeOperation = night ? 'lighter' : 'source-over';
+    for (let i = 0; i < p.trail.length; i++) {
+      const tr = p.trail[i], k = i / p.trail.length;
+      ctx.fillStyle = night ? `rgba(200,180,255,${k * 0.25})` : `rgba(255,190,70,${k * 0.3})`;
+      ctx.beginPath(); ctx.arc(tr.x, tr.y, p.r * k, 0, 7); ctx.fill();
+    }
+    const blink = p.inv > 0 && Math.floor(p.inv * 20) % 2 === 0;
+    if (!blink) {
+      const dim = smothered ? 0.5 : 1;
+      if (night) glow(p.x, p.y, 40 + p.light * 0.3, `rgba(220,205,255,${0.25 + p.light / 250})`);
+      else glow(p.x, p.y, 44 + p.light * 0.35, `rgba(255,180,50,${(0.35 + p.light / 250) * dim})`);
+      ctx.fillStyle = night ? '#fbf8ff' : '#fffbe8';
+      ctx.beginPath(); ctx.arc(p.x, p.y, p.r * (0.6 + p.light / 250), 0, 7); ctx.fill();
+      if (!night) { ctx.strokeStyle = 'rgba(235,130,20,0.9)'; ctx.lineWidth = 1.5; ctx.stroke(); }
+    }
+    ctx.globalCompositeOperation = 'source-over';
+
+    // flare charge gauge
+    if (charging && state === 'play') {
+      const full = charge >= 1;
+      const r = p.r + 8 + charge * 18;
+      ctx.strokeStyle = full ? `rgba(255,120,30,${0.7 + 0.3 * Math.sin(t * 0.03)})` : 'rgba(255,170,40,0.9)';
+      ctx.lineWidth = full ? 4 : 3;
+      ctx.beginPath(); ctx.arc(p.x, p.y, r, -Math.PI / 2, -Math.PI / 2 + Math.PI * 2 * charge); ctx.stroke();
+      // sparks drawn inward while charging
+      if (Math.random() < 0.6) {
+        const a = Math.random() * 6.28, d = rand(40, 70);
+        particles.push({ x: p.x + Math.cos(a) * d, y: p.y + Math.sin(a) * d, vx: -Math.cos(a) * d * 2.5, vy: -Math.sin(a) * d * 2.5, life: 0.35, max: 0.35, color: '#ffc04a', r: rand(1, 2) });
+      }
+    }
+  }
+
+  function drawCloud(c) {
+    const s = cloudScale(c);
+    if (s <= 0.01) return;
+    const alpha = Math.min(0.92, Math.min(1, c.born / 0.8, c.life / 1.5) + 0.1);
+    const shape = (dx, dy) => {
+      ctx.beginPath();
+      for (const q of c.puffs) {
+        const x = c.x + q.ox * s + dx, y = c.y + q.oy * s + dy;
+        ctx.moveTo(x + q.r * s, y);
+        ctx.arc(x, y, q.r * s, 0, Math.PI * 2);
+      }
+    };
+    // shadow
+    shape(0, 10);
+    ctx.fillStyle = `rgba(30,50,90,${0.14 * alpha})`;
+    ctx.fill();
+    // body
+    shape(0, 0);
+    let body = c.storm ? [110, 118, 140] : [250, 252, 255];
+    if (c.hitFlash > 0) body = body.map((v, i) => Math.round(v + ([255, 200, 120][i] - v) * c.hitFlash * 3));
+    ctx.fillStyle = `rgba(${body.join(',')},${alpha})`;
+    ctx.fill();
+    // storm clouds glower
+    if (c.storm) {
+      ctx.fillStyle = `rgba(255,230,120,${0.8 * alpha * (Math.sin(c.ph * 3) > 0.92 ? 1 : 0.35)})`;
+      for (const sgn of [-1, 1]) { ctx.beginPath(); ctx.ellipse(c.x + sgn * c.r * 0.25 * s, c.y + c.r * 0.05 * s, 3, 1.6, 0, 0, 7); ctx.fill(); }
+    }
   }
 
   function drawDawn(k) {
@@ -548,9 +934,27 @@
     ctx.globalCompositeOperation = 'source-over';
   }
 
-  function drawEnding(t) {
+  function eyePair(x, y, rx, open, blink, tilt, color) {
+    for (const sgn of [-1, 1]) {
+      const ex = x + rx * 2.4 * sgn;
+      ctx.globalCompositeOperation = 'lighter';
+      glow(ex, y, rx * 2.4, `rgba(${color},${0.35 * open})`);
+      ctx.globalCompositeOperation = 'source-over';
+      ctx.fillStyle = `rgba(220,190,255,${0.95 * open})`;
+      ctx.beginPath();
+      ctx.ellipse(ex, y, rx, Math.max(0.5, rx * 0.32 * open * blink), sgn * tilt, 0, 7);
+      ctx.fill();
+      ctx.fillStyle = `rgba(20,0,40,${open})`;
+      ctx.beginPath();
+      ctx.ellipse(ex, y, rx * 0.12, Math.max(0.3, rx * 0.28 * open * blink), 0, 0, 7);
+      ctx.fill();
+    }
+  }
+
+  // Chapter I ending: the sun breaks the horizon into the same dawn sky chapter II
+  // opens with... then storm clouds roll in toward it.
+  function drawDawnEnding(t) {
     const e = (t - wonAt) / 1000;
-    // sunrise: warm wash that blooms in
     const sun = Math.min(1, e / 1.5);
     drawDawn(0.6 + 0.4 * sun);
     ctx.globalCompositeOperation = 'lighter';
@@ -558,29 +962,58 @@
     ctx.fillRect(-20, -20, W + 40, H + 40);
     ctx.globalCompositeOperation = 'source-over';
 
-    // ...or is it? the void comes back, and something opens its eyes
+    // the night sky gives way to chapter II's dawn sky
+    const sky = Math.min(1, e / 4);
+    ctx.globalAlpha = sky;
+    const g = ctx.createLinearGradient(0, 0, 0, H);
+    g.addColorStop(0, SKY.dawn[0]); g.addColorStop(1, SKY.dawn[1]);
+    ctx.fillStyle = g;
+    ctx.fillRect(-20, -20, W + 40, H + 40);
+    ctx.globalAlpha = 1;
+
+    // the sun rises where chapter II's sun starts its arc
+    const rise = Math.min(1, e / 5);
+    const sx = W * 0.1, sy = H * 1.08 - rise * H * 0.13;
+    ctx.globalCompositeOperation = 'lighter';
+    glow(sx, sy, 260, `rgba(255,220,150,${0.45 * rise})`);
+    ctx.globalCompositeOperation = 'source-over';
+    ctx.fillStyle = '#fff1c8';
+    ctx.beginPath(); ctx.arc(sx, sy, 34, 0, 7); ctx.fill();
+
+    if (e < TEASE_AT) return;
+    if (!teased) { teased = true; sfx.gather(); }
+    // ...or is it? clouds gather over the sunrise, and the sky dims under them
+    const k = Math.min(1, (e - TEASE_AT) / 3);
+    ctx.fillStyle = `rgba(40,44,70,${0.35 * k})`;
+    ctx.fillRect(-20, -20, W + 40, H + 40);
+    for (const c of crowd) {
+      const m = Math.min(1, Math.max(0, (e - TEASE_AT - c.delay) / 3.5));
+      const ease = 1 - (1 - m) ** 3;
+      c.x = c.sx + (c.tx - c.sx) * ease;
+      c.ph = e;
+      drawCloud(c);
+    }
+  }
+
+  // Chapter II ending: the sun sets, night falls, and the shades come back by the dozen.
+  function drawDuskEnding(t) {
+    const e = (t - wonAt) / 1000;
+    const glowK = Math.min(1, e / 1.5);
+    ctx.globalCompositeOperation = 'lighter';
+    ctx.fillStyle = `rgba(255,140,80,${0.14 * glowK})`;
+    ctx.fillRect(-20, -20, W + 40, H + 40);
+    ctx.globalCompositeOperation = 'source-over';
+
     if (e < TEASE_AT) return;
     if (!teased) { teased = true; sfx.eyes(); shake = 6; }
     const d = Math.min(1, (e - TEASE_AT) / 2.5);
-    ctx.fillStyle = `rgba(2,1,8,${0.82 * d})`;
+    ctx.fillStyle = `rgba(2,1,8,${0.9 * d})`;
     ctx.fillRect(-20, -20, W + 40, H + 40);
-
-    const open = Math.min(1, Math.max(0, (e - TEASE_AT - 0.6) / 1.2));
-    const blink = Math.sin(e * 1.3) > 0.985 ? 0.1 : 1;
-    const cy = H * 0.16, gap = Math.min(W * 0.16, 130), rx = Math.min(W * 0.07, 54);
-    for (const sgn of [-1, 1]) {
-      const x = W / 2 + gap * sgn;
-      ctx.globalCompositeOperation = 'lighter';
-      glow(x, cy, rx * 2.4, `rgba(140,60,255,${0.35 * open})`);
-      ctx.globalCompositeOperation = 'source-over';
-      ctx.fillStyle = `rgba(220,190,255,${0.95 * open})`;
-      ctx.beginPath();
-      ctx.ellipse(x, cy, rx, Math.max(0.5, rx * 0.32 * open * blink), sgn * 0.12, 0, 7);
-      ctx.fill();
-      ctx.fillStyle = `rgba(20,0,40,${open})`;
-      ctx.beginPath();
-      ctx.ellipse(x, cy, rx * 0.12, Math.max(0.3, rx * 0.28 * open * blink), 0, 0, 7);
-      ctx.fill();
+    for (const c of crowd) {
+      const open = Math.min(1, Math.max(0, (e - TEASE_AT - 0.5 - c.delay) / 0.8));
+      if (open <= 0) continue;
+      const blink = Math.sin(e * 1.1 + c.ph) > 0.97 ? 0.1 : 1;
+      eyePair(c.x, c.y, c.size, open, blink, 0.2, '255,70,140');
     }
   }
 
@@ -622,9 +1055,8 @@
   }
 
   function drawMenuOrb(t) {
-    const x = W / 2, y = H / 2;
     ctx.globalCompositeOperation = 'lighter';
-    glow(x, y, 220 + Math.sin(t * 0.002) * 20, 'rgba(120,90,255,0.18)');
+    glow(W / 2, H / 2, 220 + Math.sin(t * 0.002) * 20, 'rgba(120,90,255,0.18)');
     ctx.globalCompositeOperation = 'source-over';
   }
 
@@ -636,11 +1068,11 @@
     const s = Math.floor(score);
     if (s !== hudScore) { $('score').textContent = s; hudScore = s; }
     $('combo').textContent = combo > 1 ? `chain ×${combo}` : '';
-    const left = Math.max(0, Math.ceil(DAWN - time));
-    $('dawn').textContent = `DAWN IN ${Math.floor(left / 60)}:${String(left % 60).padStart(2, '0')}`;
+    const left = Math.max(0, Math.ceil(CH.duration - time));
+    $('goal').textContent = `${CH.goal} IN ${Math.floor(left / 60)}:${String(left % 60).padStart(2, '0')}`;
   }
 
-  $('best').textContent = best ? `best ${best}` : '';
+  refreshMenu();
 
   // ---------- loop ----------
   let last = performance.now();
