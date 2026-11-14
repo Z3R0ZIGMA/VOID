@@ -15,6 +15,7 @@
   #hud .fill { height: 100%; width: 100%; background: linear-gradient(90deg, #6b4dff, #f2e9ff); transition: width .1s linear; }
   body.day #hud .fill { background: linear-gradient(90deg, #ff8a2a, #ffe27a); }
   #goal { margin-top: 10px; color: #ffcf9a; }
+  #hud #goalBar .fill { width: 0%; background: linear-gradient(90deg, #ff7a3a, #ffe2a8); box-shadow: 0 0 8px #ffb066; }
   body.day #goal { color: #b8500f; }
   #overlay { position: fixed; inset: 0; display: flex; align-items: center; justify-content: center; text-align: center; padding: 16px; pointer-events: none; }
   #overlay .panel { max-width: 480px; }
@@ -52,6 +53,7 @@
     <div>LIGHT</div>
     <div class="bar"><div class="fill" id="lightFill"></div></div>
     <div id="goal"></div>
+    <div class="bar hidden" id="goalBar"><div class="fill" id="goalFill"></div></div>
   </div>
   <div style="text-align:right">
     <div id="score">0</div>
@@ -72,7 +74,7 @@
     <p class="big">You are the last light in the dark.</p>
     <p>Your light fades every second. Gather <b style="color:#fff3c4">motes</b> to keep burning.<br>
        Things live in the void. They are drawn to you.<br>
-       Survive until <b style="color:#ffcf9a">dawn</b>.</p>
+       Gather enough light to bring the <b style="color:#ffcf9a">dawn</b>.</p>
     <p><b>Move</b> — WASD / arrows / mouse / touch-drag<br>
        <b>Pulse</b> — Space / click / double-tap (costs light, banishes nearby shades)<br>
        <b>Mute</b> — M &nbsp; · &nbsp; <b>Pause</b> — P &nbsp; · &nbsp; <b>Menu</b> — Esc</p>
@@ -119,13 +121,15 @@
   // an enemy type and ability that update()/render() know how to handle.
   const CHAPTERS = {
     1: {
-      num: 1, roman: 'I', name: 'NIGHT', goal: 'DAWN', duration: 300,
+      // won by filling the dawn bar: every mote gathered adds to it
+      num: 1, roman: 'I', name: 'NIGHT', goal: 'DAWN', fill: 120,
       enemy: 'shade', ability: 'pulse',
-      intro: 'You are the last light in the dark. Survive until dawn.',
+      intro: 'You are the last light in the dark. Gather motes to fill the dawn bar and bring the sunrise.',
       hint: 'Space / click / double-tap to pulse',
       ending: { title: 'VICTORY', end: 'THE END...', tease: '...or is it?', bonusLabel: 'dawn bonus', next: 2 }
     },
     2: {
+      // won by surviving the clock
       num: 2, roman: 'II', name: 'DAY', goal: 'DUSK', duration: 300,
       enemy: 'cloud', ability: 'flare',
       intro: 'The sun is up, and your light burns brighter. Clouds roll in to smother it. Survive until dusk.',
@@ -600,7 +604,7 @@
     flash = Math.max(0, flash - dt);
 
     if (p.light <= 0) { p.light = 0; gameOver(); }
-    else if (time >= CH.duration) victory();
+    else if (progress() >= 1) victory();
   }
 
   function updateShades(dt, p) {
@@ -678,6 +682,11 @@
 
   function spawnLantern() {
     lanterns.push({ x: rand(60, W - 60), y: rand(60, H - 60), ph: 0, life: 12 });
+  }
+
+  // how far through the chapter you are, 0..1: motes gathered toward the fill goal, or time toward the deadline
+  function progress() {
+    return CH.fill ? Math.min(1, gathered / CH.fill) : Math.min(1, time / CH.duration);
   }
 
   function visionRadius() {
@@ -802,7 +811,7 @@
     }
 
     // dawn creeping up from the horizon
-    if (state === 'play' && CH.num === 1) drawDawn(Math.min(1, time / CH.duration) ** 2 * 0.6);
+    if (state === 'play' && CH.num === 1) drawDawn(progress() ** 2 * 0.6);
     if (state === 'won') { if (CH.num === 1) drawDawnEnding(t); else drawDuskEnding(t); }
 
     if (flash > 0) { ctx.fillStyle = `rgba(255,230,170,${flash * 0.4})`; ctx.fillRect(-20, -20, W + 40, H + 40); }
@@ -1068,8 +1077,14 @@
     const s = Math.floor(score);
     if (s !== hudScore) { $('score').textContent = s; hudScore = s; }
     $('combo').textContent = combo > 1 ? `chain ×${combo}` : '';
-    const left = Math.max(0, Math.ceil(CH.duration - time));
-    $('goal').textContent = `${CH.goal} IN ${Math.floor(left / 60)}:${String(left % 60).padStart(2, '0')}`;
+    $('goalBar').classList.toggle('hidden', !CH.fill);
+    if (CH.fill) {
+      $('goal').textContent = `${CH.goal} ${Math.floor(progress() * 100)}%`;
+      $('goalFill').style.width = progress() * 100 + '%';
+    } else {
+      const left = Math.max(0, Math.ceil(CH.duration - time));
+      $('goal').textContent = `${CH.goal} IN ${Math.floor(left / 60)}:${String(left % 60).padStart(2, '0')}`;
+    }
   }
 
   refreshMenu();

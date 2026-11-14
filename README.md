@@ -4,7 +4,7 @@ You are the last light in the dark. Your light fades every second. Gather motes 
 
 **Play:** open `index.html` in any modern browser. It's a single file with no dependencies.
 
-The game has two chapters. Each lasts 5 minutes. If your light runs out first, you fade and can try that chapter again.
+The game has two chapters. Chapter I ends when you fill the dawn bar, and Chapter II ends after 5 minutes. If your light runs out first, you fade and can try that chapter again.
 
 ## Controls
 
@@ -18,14 +18,14 @@ The game has two chapters. Each lasts 5 minutes. If your light runs out first, y
 
 ## Chapter I: Night
 
-Survive until **dawn**.
+Fill the **dawn bar** to bring the sunrise.
 
 - **Light** is your health and your vision. The less light you have, the less of the void you can see.
 - **Motes** (gold) restore light. Grab them quickly one after another to build a chain multiplier.
 - **Lanterns** show up after every 25 motes and fill your light completely.
 - **Shades** (violet) drift toward you, and **stalkers** (pink) are faster. Only their eyes show in the dark. They fade away on their own after a while, and only a limited number can be out at once.
 - A **pulse** costs 12 light and destroys every shade it touches. Each one leaves a mote behind, so a well-timed pulse pays for itself.
-- A countdown shows how long until dawn, and a warm glow rises from the horizon as it gets closer.
+- Every mote you gather fills the **dawn bar** under your light. It takes 120 motes, and a warm glow rises from the horizon as it fills.
 
 When dawn breaks, the ending plays: **VICTORY**, then **THE END...**, then **...or is it?** as storm clouds roll in over the rising sun. Continue from there into Chapter II.
 
@@ -40,6 +40,6 @@ Survive until **dusk**.
 
 ## Progress
 
-Reaching dawn unlocks Chapter II. The menu then lets you continue or pick either chapter. Your progress and best score are saved in your browser.
+Filling the dawn bar unlocks Chapter II. The menu then lets you continue or pick either chapter. Your progress and best score are saved in your browser.
 
-Both chapters get harder over time, up to a limit. You get a bonus for the light you have left when you reach the end.
+Both chapters get harder over time, up to a limit. You get a bonus for the light you have left when you complete a chapter.
