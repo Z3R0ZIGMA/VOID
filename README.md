@@ -2,6 +2,8 @@
 
 You are the last light in the dark. Your light fades every second. Gather motes to keep burning, and keep away from the shades drawn to your glow.
 
+**Goal:** survive for 5 minutes until dawn breaks. If your light runs out first, you fade and the game is over.
+
 **Play:** open `index.html` in any modern browser. It's a single file with no dependencies.
 
 ## Controls
@@ -20,5 +22,7 @@ You are the last light in the dark. Your light fades every second. Gather motes 
 - **Shades** (violet) drift toward you. **Stalkers** (pink) are faster and appear more often as time goes on. Only their eyes show in the dark. Shades fade away on their own after a while, and only a limited number can be out at once.
 - Shades caught by a **pulse** leave a mote behind, so a well-timed pulse pays for itself.
 - The game gets harder over time, up to a limit: your light drains faster, and shades spawn more often and move faster. More motes appear the longer you last.
+
+- A countdown shows how long until **dawn**, and a warm glow rises from the horizon as it gets closer. Reach it to win, with a bonus for the light you have left.
 
 Your best score is saved in your browser.
